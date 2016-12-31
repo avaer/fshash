@@ -13,7 +13,12 @@ class FileStat {
   }
 }
 
-const _watch = (p, lastHash = null) => {
+const _watch = (p, lastHash, handler) => {
+  if (typeof lastHash === 'function') {
+    handler = lastHash;
+    lastHash = undefined;
+  }
+
   let live = true;
 
   let running = false;
@@ -112,6 +117,11 @@ const _watch = (p, lastHash = null) => {
 
     live = false;
   };
+
+  if (handler) {
+    result.on('change', handler);
+  }
+
   return result;
 };
 
