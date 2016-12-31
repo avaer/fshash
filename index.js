@@ -14,6 +14,8 @@ class FileStat {
 }
 
 const _watch = (p, lastHash = null) => {
+  let live = true;
+
   let running = false;
   let queued = false;
   const _check = () => {
@@ -32,21 +34,23 @@ const _watch = (p, lastHash = null) => {
         const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
         const s = sortedFileTimestamps.join(':');
         murmur.murmur32Hex(s, (err, h) => {
-          if (!err) {
-            if (h !== lastHash) {
-              result.emit('change', h);
+          if (live) {
+            if (!err) {
+              if (h !== lastHash) {
+                result.emit('change', h);
 
-              lastHash = h;
+                lastHash = h;
+              }
+            } else {
+              console.warn(err);
             }
-          } else {
-            console.warn(err);
-          }
 
-          running = false;
-          if (queued) {
-            queued = false;
+            running = false;
+            if (queued) {
+              queued = false;
 
-            _check();
+              _check();
+            }
           }
         });
       };
@@ -54,36 +58,40 @@ const _watch = (p, lastHash = null) => {
         pending++;
 
         fs.readdir(p, (err, nodes) => {
-          if (err) {
-            console.warn(err);
+          if (live) {
+            if (err) {
+              console.warn(err);
 
-            nodes = [];
+              nodes = [];
+            }
+
+            for (let i = 0; i < nodes.length; i++) {
+              const node = nodes[i];
+              _recurseNode(path.join(p, node));
+            }
+
+            pend();
           }
-
-          for (let i = 0; i < nodes.length; i++) {
-            const node = nodes[i];
-            _recurseNode(path.join(p, node));
-          }
-
-          pend();
         });
       };
       const _recurseNode = p => {
         pending++;
 
         fs.lstat(p, (err, stats) => {
-          if (!err) {
-            if (stats.isFile()) {
-              const fileStat = new FileStat(p, stats.mtime.getTime());
-              fileStats.push(fileStat);
-            } else if (stats.isDirectory()) {
-              _recurseDirectory(p);
+          if (live) {
+            if (!err) {
+              if (stats.isFile()) {
+                const fileStat = new FileStat(p, stats.mtime.getTime());
+                fileStats.push(fileStat);
+              } else if (stats.isDirectory()) {
+                _recurseDirectory(p);
+              }
+            } else {
+              console.warn(err);
             }
-          } else {
-            console.warn(err);
-          }
 
-          pend();
+            pend();
+          }
         });
       };
 
@@ -101,6 +109,8 @@ const _watch = (p, lastHash = null) => {
   const result = new EventEmitter();
   result.destroy = () => {
     watcher.close();
+
+    live = false;
   };
   return result;
 };
