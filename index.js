@@ -24,85 +24,87 @@ const _watch = (p, lastHash, handler) => {
   let running = false;
   let queued = false;
   const _check = () => {
-    if (!running) {
-      running = true;
+    if (live) {
+      if (!running) {
+        running = true;
 
-      const fileStats = [];
-      let pending = 0;
-      const pend = () => {
-        if (--pending === 0) {
-          done();
-        }
-      };
-      const done = () => {
-        const sortedFileStats = fileStats.sort((a, b) => a.name.localeCompare(b.name));
-        const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
-        const s = sortedFileTimestamps.join(':');
-        murmur.murmur32Hex(s, (err, h) => {
-          if (live) {
-            if (!err) {
-              if (h !== lastHash) {
-                result.emit('change', h);
+        const fileStats = [];
+        let pending = 0;
+        const pend = () => {
+          if (--pending === 0) {
+            done();
+          }
+        };
+        const done = () => {
+          const sortedFileStats = fileStats.sort((a, b) => a.name.localeCompare(b.name));
+          const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
+          const s = sortedFileTimestamps.join(':');
+          murmur.murmur32Hex(s, (err, h) => {
+            if (live) {
+              if (!err) {
+                if (h !== lastHash) {
+                  result.emit('change', h);
 
-                lastHash = h;
+                  lastHash = h;
+                }
+              } else {
+                console.warn(err);
               }
-            } else {
-              console.warn(err);
-            }
 
-            running = false;
-            if (queued) {
-              queued = false;
+              running = false;
+              if (queued) {
+                queued = false;
 
-              _check();
-            }
-          }
-        });
-      };
-      const _recurseDirectory = p => {
-        pending++;
-
-        fs.readdir(p, (err, nodes) => {
-          if (live) {
-            if (err) {
-              console.warn(err);
-
-              nodes = [];
-            }
-
-            for (let i = 0; i < nodes.length; i++) {
-              const node = nodes[i];
-              _recurseNode(path.join(p, node));
-            }
-
-            pend();
-          }
-        });
-      };
-      const _recurseNode = p => {
-        pending++;
-
-        fs.lstat(p, (err, stats) => {
-          if (live) {
-            if (!err) {
-              if (stats.isFile()) {
-                const fileStat = new FileStat(p, stats.mtime.getTime());
-                fileStats.push(fileStat);
-              } else if (stats.isDirectory()) {
-                _recurseDirectory(p);
+                _check();
               }
-            } else {
-              console.warn(err);
             }
+          });
+        };
+        const _recurseDirectory = p => {
+          pending++;
 
-            pend();
-          }
-        });
-      };
+          fs.readdir(p, (err, nodes) => {
+            if (live) {
+              if (err) {
+                console.warn(err);
 
-      _recurseDirectory(p);
-    } else {
-      queued = true;
+                nodes = [];
+              }
+
+              for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                _recurseNode(path.join(p, node));
+              }
+
+              pend();
+            }
+          });
+        };
+        const _recurseNode = p => {
+          pending++;
+
+          fs.lstat(p, (err, stats) => {
+            if (live) {
+              if (!err) {
+                if (stats.isFile()) {
+                  const fileStat = new FileStat(p, stats.mtime.getTime());
+                  fileStats.push(fileStat);
+                } else if (stats.isDirectory()) {
+                  _recurseDirectory(p);
+                }
+              } else {
+                console.warn(err);
+              }
+
+              pend();
+            }
+          });
+        };
+
+        _recurseDirectory(p);
+      } else {
+        queued = true;
+      }
     }
   };
 
