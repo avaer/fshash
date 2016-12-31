@@ -1,6 +1,6 @@
 {
   "name": "fs-hasher",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Node file system hasher",
   "main": "index.js",
   "scripts": {
