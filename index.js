@@ -3,7 +3,7 @@ const fs = require('fs');
 const events = require('events');
 const EventEmitter = events.EventEmitter;
 
-const murmur = require('murmurhash3');
+const murmur = require('murmur-hash').v3.x86.hash32;
 const chokidar = require('chokidar');
 
 class FileStat {
@@ -39,26 +39,21 @@ const _watch = (p, lastHash, handler) => {
           const sortedFileStats = fileStats.sort((a, b) => a.name.localeCompare(b.name));
           const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
           const s = sortedFileTimestamps.join(':');
-          murmur.murmur32Hex(s, (err, h) => {
-            if (live) {
-              if (!err) {
-                if (h !== lastHash) {
-                  result.emit('change', h);
+          const h = murmur(s);
+          if (live) {
+            if (h !== lastHash) {
+              result.emit('change', h);
 
-                  lastHash = h;
-                }
-              } else {
-                console.warn(err);
-              }
-
-              running = false;
-              if (queued) {
-                queued = false;
-
-                _check();
-              }
+              lastHash = h;
             }
-          });
+
+            running = false;
+            if (queued) {
+              queued = false;
+
+              _check();
+            }
+          }
         };
         const _recurseDirectory = p => {
           pending++;

@@ -18,6 +18,6 @@
   "homepage": "https://github.com/modulesio/fs-hasher#readme",
   "dependencies": {
     "chokidar": "^1.6.1",
-    "murmurhash3": "^0.4.0"
+    "murmur-hash": "^1.0.0"
   }
 }
