@@ -206,7 +206,7 @@ class FsHash {
 const _jsonParse = s => {
   try {
     return JSON.parse(s);
-  } catch(err) => {
+  } catch(err) {
     return undefined;
   }
 };
