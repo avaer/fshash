@@ -69,117 +69,121 @@ const _requestHash = p => new Promise((accept, reject) => {
 });
 
 class FsHash {
-  constructor({dataPath = path.join(__dirname, 'data.json')} = {}) {
+  constructor({basePath = '/', dataPath = path.join(__dirname, 'data.json')} = {}) {
+    this.basePath = basePath;
     this.dataPath = dataPath;
 
     this.save = _debounce(this.save.bind(this));
 
     this._data = {};
     this._mutex = new MultiMutex();
+    this._loadPromise = _makePromise();
+
+    this.load();
   }
 
   update(p, fn) {
-    const {_data: data} = this;
+    const {basePath, _data: data, _loadPromise: loadPromise} = this;
 
-    return this._mutex.lock(p)
-      .then(unlock => _requestHash(p)
-        .then(newHash => {
-          const oldHash = (p in data) ? data[p] : null;
+    return loadPromise
+      .then(() => this._mutex.lock(p)
+        .then(unlock => _requestHash(path.join(basePath, p))
+          .then(newHash => {
+            const oldHash = (p in data) ? data[p] : null;
 
-          if (newHash !== oldHash) {
-            return Promise.resolve(fn(newHash, oldHash))
-              .then(() => {
-                data[p] = newHash;
+            if (newHash !== oldHash) {
+              return Promise.resolve(fn(newHash, oldHash))
+                .then(() => {
+                  data[p] = newHash;
 
-                this.save();
+                  this.save();
 
-                unlock();
-              })
-              .catch(err => {
-                unlock();
+                  unlock();
+                })
+                .catch(err => {
+                  unlock();
 
-                return Promise.reject(err);
-              });
-          } else {
-            unlock();
-          }
-        })
+                  return Promise.reject(err);
+                });
+            } else {
+              unlock();
+            }
+          })
+        )
       );
   }
 
   updateAll(ps, fn) {
-    ps = ps.slice.sort(); // to prevent deadlock
+    ps = ps.slice().sort(); // to prevent deadlock
 
-    const {_data: data} = this;
+    const {basePath, _data: data, _loadPromise: loadPromise} = this;
 
-    const promises = [];
-    if (ps.length > 0) {
-      let pends = ps.length;
-      const unlocks = [];
-      const saves = [];
-      for (let i = 0; i < ps.length; i++) {
-        const p = ps[i];
-        const promise = this._mutex.lock(p)
-          .then(unlock => {
-            unlocks.push(unlock);
+    return loadPromise
+      .then(() => {
+        const promises = [];
+        const unlocks = [];
+        const saves = [];
+        for (let i = 0; i < ps.length; i++) {
+          const p = ps[i];
+          const promise = this._mutex.lock(p)
+            .then(unlock => {
+              unlocks.push(unlock);
 
-            return _requestHash(p)
-              .then(newHash => {
-                if (newHash === null || newHash !== ((p in data) ? data[p] : null)) {
-                  if (newHash !== null) {
-                    saves.push(() => {
-                      data[p] = newHash;
-                    });
+              return _requestHash(path.join(basePath, p))
+                .then(newHash => {
+                  if (newHash === null || newHash !== ((p in data) ? data[p] : null)) {
+                    if (newHash !== null) {
+                      saves.push(() => {
+                        data[p] = newHash;
+                      });
+                    }
+
+                    return p;
+                  } else {
+                    return null;
                   }
+                })
+            });
+          promises.push(promise);
+        }
+        const _cleanup = () => {
+          for (let i = 0; i < unlocks.length; i++) {
+            const unlock = unlocks[i];
+            unlock();
+          }
+          for (let i = 0; i < saves.length; i++) {
+            const save = saves[i];
+            save();
+          }
 
-                  accept(p);
-                } else {
-                  accept(null);
-                }
-              })
+          this.save();
+        };
+
+        return Promise.all(promises)
+          .then(paths => Promise.resolve(fn(paths.filter(p => p !== null))))
+          .then(() => _cleanup())
+          .catch(err => {
+            _cleanup();
+
+            return Promise.reject(err);
           });
-        promises.push(promise);
-      }
-    }
-    const _cleanup = () => {
-      for (let i = 0; i < unlocks.length; i++) {
-        const unlock = unlocks[i];
-        unlock();
-      }
-      for (let i = 0; i < saves.length; i++) {
-        const save = saves[i];
-        save();
-      }
-
-      this.save();
-    };
-
-    return Promise.all(promises)
-      .then(paths => Promise.resolve(fn(paths.filter(p => p !== null))))
-      .then(() => _cleanup())
-      .catch(err => {
-        _cleanup();
-
-        return Promise.reject(err);
       });
   }
 
   load() {
-    return new Promise((accept, reject) => {
-      const {dataPath} = this;
+    const {dataPath, _loadPromise: loadPromise} = this;
 
-      fs.readFile(dataPath, 'utf8', (err, s) => {
-        if (!err) {
-          const j = JSON.parse(s);
-          this._data = j;
+    fs.readFile(dataPath, 'utf8', (err, s) => {
+      if (!err) {
+        const j = JSON.parse(s);
+        this._data = j;
 
-          accept();
-        } else if (err.code === 'ENOENT') {
-          accept();
-        } else {
-          reject(err);
-        }
-      });
+        loadPromise.accept();
+      } else if (err.code === 'ENOENT') {
+        loadPromise.accept();
+      } else {
+        loadPromise.reject(err);
+      }
     });
   }
 
@@ -219,12 +223,18 @@ const _debounce = fn => {
   };
   return _go;
 };
-
-const _fshash = opts => {
-  const fsHash = new FsHash(opts);
-
-  return fsHash.load()
-    .then(() => fsHash);
+const _makePromise = () => {
+  let a = null;
+  let r = null;
+  const result = new Promise((accept, reject) => {
+    a = accept;
+    r = reject;
+  });
+  result.accept = a;
+  result.reject = r;
+  return result
 };
+
+const _fshash = opts => new FsHash(opts);
 
 module.exports = _fshash;
