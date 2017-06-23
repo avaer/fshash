@@ -12,56 +12,60 @@ class FileStat {
 }
 
 const _requestHash = p => new Promise((accept, reject) => {
-  const fileStats = [];
-  let pending = 0;
-  const pend = () => {
-    if (--pending === 0) {
-      _done();
-    }
-  };
-  const _done = () => {
-    const sortedFileStats = fileStats.sort((a, b) => a.name.localeCompare(b.name));
-    const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
-    const s = sortedFileTimestamps.join(':');
-    const h = murmur(s);
-    accept(h);
-  };
-  const _recurseDirectory = p => {
-    pending++;
-
-    fs.readdir(p, (err, nodes) => {
-      if (!err) {
-        for (let i = 0; i < nodes.length; i++) {
-          const node = nodes[i];
-          _recurseNode(path.join(p, node));
-        }
-
-        pend();
-      } else {
-        reject(err);
+  if (path.isAbsolute(p)) {
+    const fileStats = [];
+    let pending = 0;
+    const pend = () => {
+      if (--pending === 0) {
+        _done();
       }
-    });
-  };
-  const _recurseNode = p => {
-    pending++;
+    };
+    const _done = () => {
+      const sortedFileStats = fileStats.sort((a, b) => a.name.localeCompare(b.name));
+      const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
+      const s = sortedFileTimestamps.join(':');
+      const h = murmur(s);
+      accept(h);
+    };
+    const _recurseDirectory = p => {
+      pending++;
 
-    fs.lstat(p, (err, stats) => {
-      if (!err) {
-        if (stats.isFile()) {
-          const fileStat = new FileStat(p, stats.mtime.getTime());
-          fileStats.push(fileStat);
-        } else if (stats.isDirectory()) {
-          _recurseDirectory(p);
+      fs.readdir(p, (err, nodes) => {
+        if (!err) {
+          for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+            _recurseNode(path.join(p, node));
+          }
+
+          pend();
+        } else {
+          reject(err);
         }
+      });
+    };
+    const _recurseNode = p => {
+      pending++;
 
-        pend();
-      } else {
-        reject(err);
-      }
-    });
-  };
+      fs.lstat(p, (err, stats) => {
+        if (!err) {
+          if (stats.isFile()) {
+            const fileStat = new FileStat(p, stats.mtime.getTime());
+            fileStats.push(fileStat);
+          } else if (stats.isDirectory()) {
+            _recurseDirectory(p);
+          }
 
-  _recurseDirectory(p);
+          pend();
+        } else {
+          reject(err);
+        }
+      });
+    };
+
+    _recurseDirectory(p);
+  } else {
+    accept(null);
+  }
 });
 
 class FsHash {
@@ -101,6 +105,63 @@ class FsHash {
           }
         })
       );
+  }
+
+  updateAll(ps, fn) {
+    ps = ps.slice.sort(); // to prevent deadlock
+
+    const {_data: data} = this;
+
+    const promises = [];
+    if (ps.length > 0) {
+      let pends = ps.length;
+      const unlocks = [];
+      const saves = [];
+      for (let i = 0; i < ps.length; i++) {
+        const p = ps[i];
+        const promise = this._mutex.lock(p)
+          .then(unlock => {
+            unlocks.push(unlock);
+
+            return _requestHash(p)
+              .then(newHash => {
+                if (newHash === null || newHash !== ((p in data) ? data[p] : null)) {
+                  if (newHash !== null) {
+                    saves.push(() => {
+                      data[p] = newHash;
+                    });
+                  }
+
+                  accept(p);
+                } else {
+                  accept(null);
+                }
+              })
+          });
+        promises.push(promise);
+      }
+    }
+    const _cleanup = () => {
+      for (let i = 0; i < unlocks.length; i++) {
+        const unlock = unlocks[i];
+        unlock();
+      }
+      for (let i = 0; i < saves.length; i++) {
+        const save = saves[i];
+        save();
+      }
+
+      this.save();
+    };
+
+    return Promise.all(promises)
+      .then(paths => Promise.resolve(fn(paths.filter(p => p !== null))))
+      .then(() => _cleanup())
+      .catch(err => {
+        _cleanup();
+
+        return Promise.reject(err);
+      });
   }
 
   load() {
