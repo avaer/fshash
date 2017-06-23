@@ -83,43 +83,48 @@ class FsHash {
   }
 
   update(p, fn) {
-    const {basePath, _data: data, _loadPromise: loadPromise} = this;
+    const {_loadPromise: loadPromise} = this;
 
     return loadPromise
-      .then(() => this._mutex.lock(p)
-        .then(unlock => _requestHash(path.join(basePath, p))
-          .then(newHash => {
-            const oldHash = (p in data) ? data[p] : null;
+      .then(() => {
+        const {basePath, _data: data} = this;
 
-            if (newHash !== oldHash) {
-              return Promise.resolve(fn(newHash, oldHash))
-                .then(() => {
-                  data[p] = newHash;
+        return this._mutex.lock(p)
+          .then(unlock => _requestHash(path.join(basePath, p))
+            .then(newHash => {
+              const oldHash = (p in data) ? data[p] : null;
 
-                  this.save();
+              if (newHash !== oldHash) {
+                return Promise.resolve(fn(newHash, oldHash))
+                  .then(() => {
+                    data[p] = newHash;
 
-                  unlock();
-                })
-                .catch(err => {
-                  unlock();
+                    this.save();
 
-                  return Promise.reject(err);
-                });
-            } else {
-              unlock();
-            }
-          })
-        )
-      );
+                    unlock();
+                  })
+                  .catch(err => {
+                    unlock();
+
+                    return Promise.reject(err);
+                  });
+              } else {
+                unlock();
+              }
+            })
+          );
+      });
   }
 
   updateAll(ps, fn) {
     ps = ps.slice().sort(); // to prevent deadlock
 
-    const {basePath, _data: data, _loadPromise: loadPromise} = this;
+    const {_loadPromise: loadPromise} = this;
 
     return loadPromise
       .then(() => {
+        const {basePath, _data: data} = this;
+
         const promises = [];
         const unlocks = [];
         const saves = [];
