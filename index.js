@@ -1,10 +1,8 @@
 const path = require('path');
 const fs = require('fs');
-const events = require('events');
-const EventEmitter = events.EventEmitter;
 
-const murmur = require('murmur-hash').v3.x86.hash32;
-const chokidar = require('chokidar');
+const murmur = require('murmurhash');
+const MultiMutex = require('multimutex');
 
 class FileStat {
   constructor(name, timestamp) {
@@ -13,115 +11,157 @@ class FileStat {
   }
 }
 
-const _watch = (p, lastHash, handler) => {
-  if (typeof lastHash === 'function') {
-    handler = lastHash;
-    lastHash = undefined;
-  }
-
-  let live = true;
-
-  let running = false;
-  let queued = false;
-  const _check = () => {
-    if (live) {
-      if (!running) {
-        running = true;
-
-        const fileStats = [];
-        let pending = 0;
-        const pend = () => {
-          if (--pending === 0) {
-            done();
-          }
-        };
-        const done = () => {
-          const sortedFileStats = fileStats.sort((a, b) => a.name.localeCompare(b.name));
-          const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
-          const s = sortedFileTimestamps.join(':');
-          const h = murmur(s);
-          if (live) {
-            if (h !== lastHash) {
-              result.emit('change', h);
-
-              lastHash = h;
-            }
-
-            running = false;
-            if (queued) {
-              queued = false;
-
-              _check();
-            }
-          }
-        };
-        const _recurseDirectory = p => {
-          pending++;
-
-          fs.readdir(p, (err, nodes) => {
-            if (live) {
-              if (err) {
-                console.warn(err);
-
-                nodes = [];
-              }
-
-              for (let i = 0; i < nodes.length; i++) {
-                const node = nodes[i];
-                _recurseNode(path.join(p, node));
-              }
-
-              pend();
-            }
-          });
-        };
-        const _recurseNode = p => {
-          pending++;
-
-          fs.lstat(p, (err, stats) => {
-            if (live) {
-              if (!err) {
-                if (stats.isFile()) {
-                  const fileStat = new FileStat(p, stats.mtime.getTime());
-                  fileStats.push(fileStat);
-                } else if (stats.isDirectory()) {
-                  _recurseDirectory(p);
-                }
-              } else {
-                console.warn(err);
-              }
-
-              pend();
-            }
-          });
-        };
-
-        _recurseDirectory(p);
-      } else {
-        queued = true;
-      }
+const _requestHash = p => new Promise((accept, reject) => {
+  const fileStats = [];
+  let pending = 0;
+  const pend = () => {
+    if (--pending === 0) {
+      _done();
     }
   };
+  const _done = () => {
+    const sortedFileStats = fileStats.sort((a, b) => a.name.localeCompare(b.name));
+    const sortedFileTimestamps = sortedFileStats.map(fileStat => fileStat.timestamp);
+    const s = sortedFileTimestamps.join(':');
+    const h = murmur(s);
+    accept(h);
+  };
+  const _recurseDirectory = p => {
+    pending++;
 
-  const watcher = chokidar.watch(p);
-  watcher.on('all', _check);
+    fs.readdir(p, (err, nodes) => {
+      if (!err) {
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
+          _recurseNode(path.join(p, node));
+        }
 
-  _check();
+        pend();
+      } else {
+        reject(err);
+      }
+    });
+  };
+  const _recurseNode = p => {
+    pending++;
 
-  const result = new EventEmitter();
-  result.destroy = () => {
-    watcher.close();
+    fs.lstat(p, (err, stats) => {
+      if (!err) {
+        if (stats.isFile()) {
+          const fileStat = new FileStat(p, stats.mtime.getTime());
+          fileStats.push(fileStat);
+        } else if (stats.isDirectory()) {
+          _recurseDirectory(p);
+        }
 
-    live = false;
+        pend();
+      } else {
+        reject(err);
+      }
+    });
   };
 
-  if (handler) {
-    result.on('change', handler);
+  _recurseDirectory(p);
+});
+
+class FsHash {
+  constructor({dataPath = path.join(__dirname, 'data.json')} = {}) {
+    this.dataPath = dataPath;
+
+    this.save = _debounce(this.save);
+
+    this._data = {};
+    this._mutex = new MultiMutex();
   }
 
-  return result;
+  update(p, fn) {
+    const {_data: data} = this;
+
+    return this._mutex.lock(p)
+      .then(unlock => _requestHash(p)
+        .then(newHash => {
+          const oldHash = data[p];
+
+          if (newHash !== oldHash) {
+            return Promise.resolve(fn(newHash, oldHash))
+              .then(() => {
+                data[p] = newHash;
+
+                this.save();
+
+                unlock();
+              })
+              .cache(err => {
+                unlock();
+
+                return Promise.reject(err);
+              });
+          } else {
+            unlock();
+          }
+        })
+      );
+  }
+
+  load() {
+    return new Promise((accept, reject) => {
+      const {dataPath} = this;
+
+      fs.readFile(dataPath, 'utf8', (err, s) => {
+        if (!err) {
+          const j = JSON.parse(s);
+          this._data = j;
+
+          accept();
+        } else {
+          reject(err);
+        }
+      });
+    });
+  }
+
+  save(next) {
+    const {dataPath, _data: data} = this;
+
+    fs.writeFile(dataPath, JSON.stringify(data), err => {
+      if (err) {
+        console.warn(err);
+      }
+
+      next();
+    });
+  }
+}
+
+const _debounce = fn => {
+  let running = false;
+  let queued = false;
+
+  const _go = () => {
+    if (!running) {
+      running = true;
+
+      fn(() => {
+        running = false;
+
+        if (queued) {
+          queued = false;
+
+          _go();
+        }
+      });
+    } else {
+      queued = true;
+    }
+  };
+  return _go;
 };
 
-module.exports = {
-  watch: _watch,
+const _fshash = opts => {
+  const fsHash = new FsHash(opts);
+
+  return fsHash.load()
+    .then(() => fsHash);
 };
+
+module.exports = _fshash;
