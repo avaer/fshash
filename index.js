@@ -175,7 +175,10 @@ class FsHash {
 
     fs.readFile(dataPath, 'utf8', (err, s) => {
       if (!err) {
-        const j = JSON.parse(s);
+        let j = _jsonParse(s);
+        if (j === undefined) {
+          j = {};
+        }
         this._data = j;
 
         loadPromise.accept();
@@ -200,6 +203,24 @@ class FsHash {
   }
 }
 
+const _jsonParse = s => {
+  try {
+    return JSON.parse(s);
+  } catch(err) => {
+    return undefined;
+  }
+};
+const _makePromise = () => {
+  let a = null;
+  let r = null;
+  const result = new Promise((accept, reject) => {
+    a = accept;
+    r = reject;
+  });
+  result.accept = a;
+  result.reject = r;
+  return result
+};
 const _debounce = fn => {
   let running = false;
   let queued = false;
@@ -222,17 +243,6 @@ const _debounce = fn => {
     }
   };
   return _go;
-};
-const _makePromise = () => {
-  let a = null;
-  let r = null;
-  const result = new Promise((accept, reject) => {
-    a = accept;
-    r = reject;
-  });
-  result.accept = a;
-  result.reject = r;
-  return result
 };
 
 const _fshash = opts => new FsHash(opts);
