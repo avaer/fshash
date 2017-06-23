@@ -68,18 +68,6 @@ const _requestHash = p => new Promise((accept, reject) => {
     accept(null);
   }
 });
-const _requestHashes = ps => {
-  return Promise.all(ps.map(p => _requestHash(p)))
-    .then(hs => {
-      const result = {};
-      for (let i = 0; i < hs.length; i++) {
-        const p = ps[i];
-        const h = hs[i];
-        result[p] = h;
-      }
-      return result;
-    });
-};
 
 class FsHash {
   constructor({basePath = '/', dataPath = path.join(__dirname, 'data.json')} = {}) {
@@ -272,6 +260,6 @@ const _debounce = fn => {
 };
 
 const fshash = opts => new FsHash(opts);
-fshash.requestHashes = _requestHashes;
+fshash.requestHash = _requestHash;
 
 module.exports = fshash;
