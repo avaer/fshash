@@ -1,10 +1,14 @@
-const fsHasher = require('.');
+const path = require('path');
 
-const hasher = fsHasher.watch('.');
-hasher.on('change', h => {
-  console.log(h);
+const fshash = require('.');
+
+fshash({
+  dataPath: path.join('/', 'tmp', 'fshash-test.json'),
+}).then(fsHash => {
+  fsHash.update(__dirname, (newHash, oldHash) => {
+    console.log('update', {newHash, oldHash});
+  });
+}).catch(err => {
+  console.warn(err);
+  process.exit(1);
 });
-
-setTimeout(() => {
-  hasher.destroy();
-}, 5 * 1000);

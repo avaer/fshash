@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/modulesio/fshash#readme",
   "dependencies": {
+    "multimutex": "0.0.2",
     "murmurhash": "0.0.2"
   }
 }

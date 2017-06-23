@@ -68,7 +68,7 @@ class FsHash {
   constructor({dataPath = path.join(__dirname, 'data.json')} = {}) {
     this.dataPath = dataPath;
 
-    this.save = _debounce(this.save);
+    this.save = _debounce(this.save.bind(this));
 
     this._data = {};
     this._mutex = new MultiMutex();
@@ -80,7 +80,7 @@ class FsHash {
     return this._mutex.lock(p)
       .then(unlock => _requestHash(p)
         .then(newHash => {
-          const oldHash = data[p];
+          const oldHash = (p in data) ? data[p] : null;
 
           if (newHash !== oldHash) {
             return Promise.resolve(fn(newHash, oldHash))
@@ -91,7 +91,7 @@ class FsHash {
 
                 unlock();
               })
-              .cache(err => {
+              .catch(err => {
                 unlock();
 
                 return Promise.reject(err);
@@ -112,6 +112,8 @@ class FsHash {
           const j = JSON.parse(s);
           this._data = j;
 
+          accept();
+        } else if (err.code === 'ENOENT') {
           accept();
         } else {
           reject(err);
