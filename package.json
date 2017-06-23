@@ -1,21 +1,21 @@
 {
-  "name": "fs-hasher",
-  "version": "0.0.5",
-  "description": "Node file system hasher",
+  "name": "fshash",
+  "version": "0.0.1",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/modulesio/fs-hasher.git"
+    "url": "git+https://github.com/modulesio/fshash.git"
   },
   "author": "Avaer Kazmer <a@modules.io>",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/modulesio/fs-hasher/issues"
+    "url": "https://github.com/modulesio/fshash/issues"
   },
-  "homepage": "https://github.com/modulesio/fs-hasher#readme",
+  "homepage": "https://github.com/modulesio/fshash#readme",
   "dependencies": {
     "chokidar": "^1.6.1",
     "murmur-hash": "^1.0.0"
