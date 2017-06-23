@@ -78,15 +78,29 @@ class FsHash {
 
     this._data = {};
     this._mutex = new MultiMutex();
-    this._loadPromise = _makePromise();
+    this._loadPromise = _makePromise((accept, reject) => {
+      fs.readFile(dataPath, 'utf8', (err, s) => {
+        if (!err) {
+          let j = _jsonParse(s);
+          if (j === undefined) {
+            j = {};
+          }
+          this._data = j;
 
-    this.load();
+          accept();
+        } else if (err.code === 'ENOENT') {
+          accept();
+        } else {
+          reject(err);
+        }
+      });
+    });
   }
 
   update(p, fn) {
     const {_loadPromise: loadPromise} = this;
 
-    return loadPromise
+    return loadPromise()
       .then(() => {
         const {basePath, _data: data} = this;
 
@@ -122,7 +136,7 @@ class FsHash {
 
     const {_loadPromise: loadPromise} = this;
 
-    return loadPromise
+    return loadPromise()
       .then(() => {
         const {basePath, _data: data} = this;
 
@@ -176,26 +190,6 @@ class FsHash {
       });
   }
 
-  load() {
-    const {dataPath, _loadPromise: loadPromise} = this;
-
-    fs.readFile(dataPath, 'utf8', (err, s) => {
-      if (!err) {
-        let j = _jsonParse(s);
-        if (j === undefined) {
-          j = {};
-        }
-        this._data = j;
-
-        loadPromise.accept();
-      } else if (err.code === 'ENOENT') {
-        loadPromise.accept();
-      } else {
-        loadPromise.reject(err);
-      }
-    });
-  }
-
   save(next) {
     const {dataPath, _data: data} = this;
 
@@ -224,16 +218,25 @@ const _jsonParse = s => {
     return undefined;
   }
 };
-const _makePromise = () => {
+const _makePromise = fn => {
   let a = null;
   let r = null;
-  const result = new Promise((accept, reject) => {
+  const promise = new Promise((accept, reject) => {
     a = accept;
     r = reject;
   });
-  result.accept = a;
-  result.reject = r;
-  return result
+
+  let triggered = false;
+
+  return () => {
+    if (!triggered) {
+      fn(a, r);
+
+      triggered = true;
+    }
+
+    return promise;
+  };
 };
 const _debounce = fn => {
   let running = false;
