@@ -83,6 +83,19 @@ class FsHash {
     this.load();
   }
 
+  static requestHashes(ps) {
+    return Promise.all(ps.map(p => _requestHash(p)))
+      .then(hs => {
+        const result = {};
+        for (let i = 0; i < hs.length; i++) {
+          const p = ps[i];
+          const h = hs[i];
+          result[p] = h;
+        }
+        return result;
+      });
+  }
+
   update(p, fn) {
     const {_loadPromise: loadPromise} = this;
 
