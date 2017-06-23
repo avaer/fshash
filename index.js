@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 
+const mkdirp = require('mkdirp');
 const murmur = require('murmurhash');
 const MultiMutex = require('multimutex');
 
@@ -198,12 +199,20 @@ class FsHash {
   save(next) {
     const {dataPath, _data: data} = this;
 
-    fs.writeFile(dataPath, JSON.stringify(data), err => {
-      if (err) {
-        console.warn(err);
-      }
+    mkdirp(path.dirname(dataPath), err => {
+      if (!err) {
+        fs.writeFile(dataPath, JSON.stringify(data), err => {
+          if (err) {
+            console.warn(err);
+          }
 
-      next();
+          next();
+        });
+      } else {
+        console.warn(err);
+
+        next();
+      }
     });
   }
 }
