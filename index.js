@@ -171,17 +171,21 @@ class FsHash {
             const unlock = unlocks[i];
             unlock();
           }
+        };
+        const _save = () => {
           for (let i = 0; i < saves.length; i++) {
             const save = saves[i];
             save();
           }
-
           this.save();
         };
 
         return Promise.all(promises)
           .then(paths => Promise.resolve(fn(paths.filter(p => p !== null))))
-          .then(() => _cleanup())
+          .then(() => {
+            _cleanup();
+            _save();
+          })
           .catch(err => {
             _cleanup();
 
