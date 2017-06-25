@@ -207,7 +207,7 @@ class FsHash {
             this.save();
 
             unlock();
-          )
+          })
           .catch(err => {
             unlock();
 
