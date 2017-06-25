@@ -194,6 +194,22 @@ class FsHash {
       });
   }
 
+  remove(p) {
+    const {_loadPromise: loadPromise} = this;
+
+    return loadPromise()
+      .then(() => this._mutex.lock(p)
+        .then(unlock => {
+          const {_data: data} = this;
+          delete data[p];
+
+          this.save();
+
+          unlock();
+        })
+      );
+  }
+
   save(next) {
     const {dataPath, _data: data} = this;
 
