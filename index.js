@@ -194,19 +194,26 @@ class FsHash {
       });
   }
 
-  remove(p) {
+  remove(p, fn) {
     const {_loadPromise: loadPromise} = this;
 
     return loadPromise()
       .then(() => this._mutex.lock(p)
-        .then(unlock => {
-          const {_data: data} = this;
-          delete data[p];
+        .then(unlock => Promise.resolve(fn(p))
+          .then(() => {
+            const {_data: data} = this;
+            delete data[p];
 
-          this.save();
+            this.save();
 
-          unlock();
-        })
+            unlock();
+          )
+          .catch(err => {
+            unlock();
+
+            return Promise.reject(err);
+          })
+        )
       );
   }
 
