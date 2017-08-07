@@ -97,17 +97,25 @@ class FsHash {
     });
   }
 
+  requestHash(p) {
+    if (path.isAbsolute(p)) {
+      return _requestHash(path.join(this.basePath, p));
+    } else {
+      return Promise.resolve(null);
+    }
+  }
+
   update(p, fn) {
     const {_loadPromise: loadPromise} = this;
 
     return loadPromise()
       .then(() => {
-        const {basePath, _data: data} = this;
+        const {_data: data} = this;
 
         return this._mutex.lock(p)
-          .then(unlock => _requestHash(path.join(basePath, p))
+          .then(unlock => this.requestHash(p)
             .then(newHash => {
-              const oldHash = (p in data) ? data[p] : null;
+              const oldHash = data[p];
 
               if (newHash !== oldHash) {
                 return Promise.resolve(fn(newHash, oldHash))
@@ -138,7 +146,7 @@ class FsHash {
 
     return loadPromise()
       .then(() => {
-        const {basePath, _data: data} = this;
+        const {_data: data} = this;
 
         const promises = [];
         const unlocks = [];
@@ -149,14 +157,14 @@ class FsHash {
             .then(unlock => {
               unlocks.push(unlock);
 
-              return _requestHash(path.join(basePath, p))
+              return this.requestHash(p)
                 .then(newHash => {
-                  if (newHash === null || newHash !== ((p in data) ? data[p] : null)) {
-                    if (newHash !== null) {
-                      saves.push(() => {
-                        data[p] = newHash;
-                      });
-                    }
+                  const oldHash = data[p];
+
+                  if (newHash !== oldHash) {
+                    saves.push(() => {
+                      data[p] = newHash;
+                    });
 
                     return p;
                   } else {
