@@ -69,8 +69,7 @@ const _requestHash = p => new Promise((accept, reject) => {
 });
 
 class FsHash {
-  constructor({basePath = '/', dataPath = path.join(__dirname, 'data.json')} = {}) {
-    this.basePath = basePath;
+  constructor({dataPath = path.join(__dirname, 'data.json')} = {}) {
     this.dataPath = dataPath;
 
     this.save = _debounce(this.save.bind(this));
@@ -97,7 +96,7 @@ class FsHash {
 
   requestHash(p) {
     if (path.isAbsolute(p)) {
-      return _requestHash(path.join(this.basePath, p));
+      return _requestHash(p);
     } else {
       return Promise.resolve(null);
     }
