@@ -140,7 +140,7 @@ class FsHash {
   }
 
   updateAll(ps, fn) {
-    ps = ps.slice().sort(); // to prevent deadlock
+    // ps = ps.slice().sort(); // to prevent deadlock
 
     const {_loadPromise: loadPromise} = this;
 
