@@ -3,7 +3,6 @@ const fs = require('fs');
 
 const mkdirp = require('mkdirp');
 const murmur = require('murmurhash');
-const MultiMutex = require('multimutex');
 
 class FileStat {
   constructor(name, timestamp) {
@@ -77,7 +76,6 @@ class FsHash {
     this.save = _debounce(this.save.bind(this));
 
     this._data = {};
-    this._mutex = new MultiMutex();
     this._loadPromise = _makePromise((accept, reject) => {
       fs.readFile(dataPath, 'utf8', (err, s) => {
         if (!err) {
@@ -112,78 +110,57 @@ class FsHash {
       .then(() => {
         const {_data: data} = this;
 
-        return this._mutex.lock(p)
-          .then(unlock => this.requestHash(p)
-            .then(newHash => {
-              const oldHash = data[p];
+        return this.requestHash(p)
+          .then(newHash => {
+            const oldHash = data[p];
 
-              if (newHash !== oldHash) {
-                return Promise.resolve(fn(newHash, oldHash))
-                  .then(() => {
-                    data[p] = newHash;
+            if (newHash !== oldHash) {
+              return Promise.resolve(fn(newHash, oldHash))
+                .then(() => {
+                  data[p] = newHash;
 
-                    this.save();
+                  this.save();
 
-                    unlock();
-                  })
-                  .catch(err => {
-                    unlock();
+                  unlock();
+                })
+                .catch(err => {
+                  unlock();
 
-                    return Promise.reject(err);
-                  });
-              } else {
-                unlock();
-              }
-            })
-          );
+                  return Promise.reject(err);
+                });
+            } else {
+              unlock();
+            }
+          });
       });
   }
 
   updateAll(ps, fn) {
-    // ps = ps.slice().sort(); // to prevent deadlock
-
-    const {_loadPromise: loadPromise} = this;
-
-    return loadPromise()
+    return this._loadPromise()
       .then(() => {
-        const {_data: data} = this;
-
         const promises = [];
-        const unlocks = [];
         const saves = [];
         for (let i = 0; i < ps.length; i++) {
           const p = ps[i];
-          const promise = this._mutex.lock(p)
-            .then(unlock => {
-              unlocks.push(unlock);
+          const promise = this.requestHash(p)
+            .then(newHash => {
+              const oldHash = this._data[p];
 
-              return this.requestHash(p)
-                .then(newHash => {
-                  const oldHash = data[p];
+              if (newHash !== oldHash) {
+                saves.push(() => {
+                  this._data[p] = newHash;
+                });
 
-                  if (newHash !== oldHash) {
-                    saves.push(() => {
-                      data[p] = newHash;
-                    });
-
-                    return p;
-                  } else {
-                    return null;
-                  }
-                })
+                return p;
+              } else {
+                return null;
+              }
             });
           promises.push(promise);
         }
-        const _cleanup = () => {
-          for (let i = 0; i < unlocks.length; i++) {
-            const unlock = unlocks[i];
-            unlock();
-          }
-        };
         const _save = () => {
           for (let i = 0; i < saves.length; i++) {
-            const save = saves[i];
-            save();
+            saves[i]();
           }
           this.save();
         };
@@ -191,38 +168,20 @@ class FsHash {
         return Promise.all(promises)
           .then(paths => Promise.resolve(fn(paths.map(p => p !== null))))
           .then(() => {
-            _cleanup();
             _save();
-          })
-          .catch(err => {
-            _cleanup();
-
-            return Promise.reject(err);
           });
       });
   }
 
   remove(p, fn) {
-    const {_loadPromise: loadPromise} = this;
+    return this._loadPromise()
+      .then(() => {
+        fn(p);
 
-    return loadPromise()
-      .then(() => this._mutex.lock(p)
-        .then(unlock => Promise.resolve(fn(p))
-          .then(() => {
-            const {_data: data} = this;
-            delete data[p];
+        delete this._data[p];
 
-            this.save();
-
-            unlock();
-          })
-          .catch(err => {
-            unlock();
-
-            return Promise.reject(err);
-          })
-        )
-      );
+        this.save();
+      });
   }
 
   save(next) {

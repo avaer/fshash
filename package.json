@@ -18,7 +18,6 @@
   "homepage": "https://github.com/modulesio/fshash#readme",
   "dependencies": {
     "mkdirp": "^0.5.1",
-    "multimutex": "0.0.2",
     "murmurhash": "0.0.2"
   }
 }
