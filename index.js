@@ -189,7 +189,7 @@ class FsHash {
         };
 
         return Promise.all(promises)
-          .then(paths => Promise.resolve(fn(paths.filter(p => p !== null))))
+          .then(paths => Promise.resolve(fn(paths.map(p => p !== null))))
           .then(() => {
             _cleanup();
             _save();
