@@ -102,7 +102,7 @@ class FsHash {
     }
   }
 
-  update(p, fn) {
+  update(p, fn, {force = false} = {}) {
     const {_loadPromise: loadPromise} = this;
 
     return loadPromise()
@@ -113,7 +113,7 @@ class FsHash {
           .then(newHash => {
             const oldHash = data[p];
 
-            if (newHash !== oldHash) {
+            if (newHash !== oldHash || force) {
               return Promise.resolve(fn(newHash, oldHash))
                 .then(() => {
                   data[p] = newHash;
@@ -134,7 +134,7 @@ class FsHash {
       });
   }
 
-  updateAll(ps, fn) {
+  updateAll(ps, fn, {force = false} = {}) {
     return this._loadPromise()
       .then(() => {
         const promises = [];
@@ -145,7 +145,7 @@ class FsHash {
             .then(newHash => {
               const oldHash = this._data[p];
 
-              if (newHash !== oldHash) {
+              if (newHash !== oldHash || force) {
                 saves.push(() => {
                   this._data[p] = newHash;
                 });
