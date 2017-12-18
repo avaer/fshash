@@ -69,7 +69,8 @@ const _requestHash = p => new Promise((accept, reject) => {
 });
 
 class FsHash {
-  constructor({dataPath = path.join(__dirname, 'data.json')} = {}) {
+  constructor({dirname = __dirname, dataPath = path.join(dirname, 'data.json')} = {}) {
+    this.dirname = dirname;
     this.dataPath = dataPath;
 
     this.save = _debounce(this.save.bind(this));
@@ -96,7 +97,7 @@ class FsHash {
 
   requestHash(p) {
     if (path.isAbsolute(p)) {
-      return _requestHash(p);
+      return _requestHash(path.join(this.dirname, p));
     } else {
       return Promise.resolve(null);
     }
@@ -175,11 +176,23 @@ class FsHash {
   remove(p, fn) {
     return this._loadPromise()
       .then(() => {
-        fn(p);
+        const _cleanup = () => {
+          delete this._data[p];
 
-        delete this._data[p];
+          this.save();
+        };
 
-        this.save();
+        return fn(p)
+          .then(() => {
+            _cleanup();
+          })
+          .catch(err => {
+            console.warn(err);
+
+            _cleanup();
+
+            return Promise.resolve();
+          });
       });
   }
 
